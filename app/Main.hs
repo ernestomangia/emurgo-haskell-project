@@ -1,4 +1,13 @@
 module Main where
 
+import GameLogic
+
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = do
+    putStrLn ""
+    putStrLn "********** EMURGO Batch 64 | Final project | 2022 **********"
+    putStrLn "**********            Minesweeper Game            **********"
+    putStrLn ""
+    putStrLn "Please, enter your name: "
+    playerName <- getLine
+    runGame $ makeGame (makeBoard 9 9) playerName
