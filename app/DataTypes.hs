@@ -12,10 +12,10 @@ data Cell             = Cell
                         } deriving (Show)
 
 data CellDisplayState  = Covered
-                         | Uncovered deriving (Show)
+                         | Uncovered deriving (Show, Eq)
 
 data CellState         = Mine
-                         | AdjacentMine Int deriving (Show)
+                         | AdjacentMine Int deriving (Show, Eq)
 
 data GameState         = On 
                          | Won

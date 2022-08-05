@@ -3,11 +3,10 @@ module GameLogic where
 import DataTypes
 
 import System.IO (hFlush, stdout)
-import Data.List (find, intersect)
-import Data.Maybe (fromJust)
+import Data.List (intersect)
 import Text.Read (readMaybe)
 
--- ************************* Game *************************
+---------------------------------------------------------------- Game ----------------------------------------------------------------
 
 {-
     5x5 board example:      	
@@ -62,64 +61,58 @@ makeGame board playerName = Game
   }
 
 runGame :: Game -> IO ()
-runGame (Game player state board maxRow maxCol) = 
-  case state of 
-    Lost -> do
-            showBoard $ uncoverBoard board 
-            putStrLn "********** GAME OVER! ********** \n"
-    Won  -> do
-            showBoard $ uncoverBoard board 
-            putStrLn "********** YOU WIN! ********** \n"
-    On   -> do
-            putStrLn ("\nPlayer: " ++ player ++ "\n")
-            showBoard board
-            cellPosition <- getCellPosition maxRow maxCol
-            putStrLn "\n"
-            let cell = findCell board cellPosition
-            case cellState cell of
-              Mine -> runGame (Game player Lost board maxRow maxCol)
-              _    -> do
-                      let updatedBoard = updateBoard board cell
-                      runGame (Game player state updatedBoard maxRow maxCol)
-
-{- 
-runGame :: Game -> IO ()
 runGame (Game player state board maxRow maxCol) = do
-  putStrLn ("\nPlayer: " ++ player ++ "\n")
-  showBoard board
-  cellPosition <- getCellPosition maxRow maxCol
-  putStrLn "\n"
-  let cell = findCell board cellPosition
-  case cellState cell of
-    Mine -> do 
-            showBoard $ uncoverBoard board 
-            putStrLn "********** GAME OVER! ********** \n"
-    _    -> do
-            let updatedBoard = updateBoard board cell
-            runGame (Game player state updatedBoard maxRow maxCol)
--}
+    putStrLn ("\nPlayer: " ++ player ++ "\n")
+    showBoard board
+    cellPosition <- getCellPosition maxRow maxCol                                       -- Get position (row, col)
+    putStrLn "\n"
+    let updatedBoard = updateBoard board cellPosition                                   -- Update board at the selected position
+    case checkGameState updatedBoard of                                                 -- Check if Lost, Won or On
+        Lost -> do
+                showBoard $ uncoverBoard board                                          -- Show board uncovered
+                putStrLn "******************** GAME OVER! ******************** \n"
+        Won  -> do
+                showBoard $ uncoverBoard board                                          -- Show board uncovered
+                putStrLn "******************** YOU WIN! ******************** \n"
+        On   -> runGame (Game player state updatedBoard maxRow maxCol)                  -- Game continues
 
--- ************************* Board *************************
+checkGameState :: Board -> GameState
+checkGameState board = do
+    let concatBoard = concat board
+    let anyMineUncovered = any (\x -> cellState x == Mine 
+                                      && cellDisplayState x == Uncovered) $ concatBoard
+    case anyMineUncovered of
+        True    -> Lost
+        _       -> do 
+                   let anyNonMineCovered = any (\x -> (case cellState x of AdjacentMine _ -> True; _ -> False) 
+                                                       && cellDisplayState x == Covered) $ concatBoard
+                   case anyNonMineCovered of
+                        True    -> On
+                        _       -> Won
+
+---------------------------------------------------------------- /Game ----------------------------------------------------------------
+
+---------------------------------------------------------------- Board ----------------------------------------------------------------
 
 -- Inits cells as Covered and grouped by rows [ [(1,1), (1,2)], [(2,1), (2,2)] ... ]
 makeBoard :: Int -> Int -> Board
 makeBoard row col = [ [Cell 
-  {
-    position         = (r, c),
-    cellDisplayState = Covered,
-    cellState        = case elem (r, c) minePositions of 
-                         True  -> Mine
-                         False -> AdjacentMine (calculateAdjacentMines (r, c) minePositions)
-  } | c <- [1..col] ] | r <- [1..row] ]
-  where 
-    minePositions = [(1,1), (1,2)]  -- TODO make this random
+    {
+        position         = (r, c),
+        cellDisplayState = Covered,
+        cellState        = case elem (r, c) minePositions of 
+                                True  -> Mine
+                                False -> AdjacentMine (calculateAdjacentMines (r, c) minePositions)
+    } | c <- [1..col] ] | r <- [1..row] ]
+    where 
+        minePositions = [(1,1), (1,2)]  -- TODO make this random
 
 showBoard :: Board -> IO ()
 showBoard board = do
-  putStrLn $ putStrPadding " " ++ showColNumbers board
-  putStrLn ""
-  mapM_ (\x -> putStrLn x >> putStrLn "") $ map showRow board
-  putStrLn ""
+    putStrLn $ putStrPadding " " ++ showColNumbers board
+    putStrLn ""
+    mapM_ (\x -> putStrLn x >> putStrLn "") $ map showRow board
+    putStrLn ""
 
 -- Show column numbers as top-header
 showColNumbers :: Board -> String
@@ -128,12 +121,14 @@ showColNumbers board = concat [putStrPadding $ show col | (row, col) <- (map (po
 uncoverBoard :: Board -> Board
 uncoverBoard board = map (map (\x -> x { cellDisplayState = Uncovered })) $ board
 
-updateBoard :: Board -> Cell -> Board
-updateBoard board (Cell pos _ _) = map (map (\c -> if position c == pos 
-                                                   then c { cellDisplayState = Uncovered }
-                                                   else c )) $ board
+updateBoard :: Board -> Position -> Board
+updateBoard board pos = map (map (\c -> if position c == pos 
+                                            then c { cellDisplayState = Uncovered }
+                                            else c )) $ board
 
--- ************************* Row *************************
+---------------------------------------------------------------- /Board ----------------------------------------------------------------
+
+---------------------------------------------------------------- Row ----------------------------------------------------------------
 
 showRow :: [Cell] -> String
 showRow row = showRowNumber row ++ (concat . map (putStrPadding . showCell) $ row)
@@ -141,7 +136,9 @@ showRow row = showRowNumber row ++ (concat . map (putStrPadding . showCell) $ ro
 showRowNumber :: [Cell] -> String
 showRowNumber row = putStrPadding $ show $ fst $ position $ head row
 
--- ************************* Cell *************************
+---------------------------------------------------------------- /Row ----------------------------------------------------------------
+
+---------------------------------------------------------------- Cell ----------------------------------------------------------------
 
 showCell :: Cell -> String
 showCell (Cell _ Covered _)                  = "-"
@@ -149,18 +146,15 @@ showCell (Cell _ Uncovered Mine)             = "*"
 showCell (Cell _ Uncovered (AdjacentMine 0)) = " "
 showCell (Cell _ Uncovered (AdjacentMine n)) = (show n)
 
-findCell :: Board -> Position -> Cell
-findCell board pos = fromJust $ find (\x -> position x == pos) $ concat board
-
 -- Read position: (Int, Int)
 getCellPosition :: Int -> Int -> IO Position
 getCellPosition maxRow maxCol = do
     position <- map readMaybe . words <$> putStrGetLine "Select a cell (row, col): "
     case position of
-      [Just row, Just col] -> if validateCellPosition row col maxRow maxCol
-                                then return (row, col)
-                                else putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
-      _                    -> putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
+        [Just row, Just col] -> if validateCellPosition row col maxRow maxCol
+                                    then return (row, col)
+                                    else putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
+        _                    -> putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
 
 validateCellPosition :: Int -> Int -> Int -> Int -> Bool
 validateCellPosition row col maxRow maxCol = row > 0 && row <= maxRow && col > 0 && col <= maxCol
@@ -174,10 +168,14 @@ getAdjacentPositions (r, c) = filter (\(x, y) -> x > 0 && y > 0)
                                (r, c - 1),  {- (r, c) -}   (r, c + 1),
                                (r + 1, c - 1), (r + 1, c), (r + 1, c + 1)]
 
--- ************************* Helper functions *************************
+---------------------------------------------------------------- /Cell ----------------------------------------------------------------
+
+---------------------------------------------------------------- Helper functions ----------------------------------------------------------------
 
 putStrPadding :: String -> String
 putStrPadding s = s ++ (concat $ replicate 3 " ")
 
 putStrGetLine :: String -> IO String
 putStrGetLine text = putStr text >> hFlush stdout >> getLine
+
+---------------------------------------------------------------- /Helper functions ----------------------------------------------------------------
