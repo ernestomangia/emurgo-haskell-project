@@ -80,12 +80,22 @@ makeBoard row col = [ [Cell
 
 showBoard :: Board -> IO ()
 showBoard board = do
-    putStrLn $ putStrPadding " " ++ showColNumbers board
-    putStrLn ""
+  putStrLn $ putStrPadding " " ++ showColNumbers board
+  putStrLn ""
+  mapM_ (\x -> putStrLn x >> putStrLn "") $ map showRow board
+  putStrLn ""
 
 -- Show column numbers as top-header
 showColNumbers :: Board -> String
 showColNumbers board = concat [putStrPadding $ show col | (row, col) <- (map (position) (head board))]
+
+-- ************************* Row *************************
+
+showRow :: [Cell] -> String
+showRow row = showRowNumber row ++ (concat . map (putStrPadding . showCell) $ row)
+
+showRowNumber :: [Cell] -> String
+showRowNumber row = putStrPadding $ show $ fst $ position $ head row
 
 -- ************************* Cell *************************
 
