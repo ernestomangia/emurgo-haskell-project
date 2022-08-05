@@ -8,6 +8,5 @@ main = do
     putStrLn "********** EMURGO Batch 64 | Final project | 2022 **********"
     putStrLn "**********            Minesweeper Game            **********"
     putStrLn ""
-    putStrLn "Please, enter your name: "
-    playerName <- getLine
+    playerName <- putStrGetLine "Please, enter your name: "
     runGame $ makeGame (makeBoard 9 9) playerName
