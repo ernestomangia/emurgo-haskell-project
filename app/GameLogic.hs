@@ -2,9 +2,11 @@ module GameLogic where
 
 import DataTypes
 
-import System.IO (hFlush, stdout)
-import Data.List (intersect)
-import Text.Read (readMaybe)
+import Control.Monad    (replicateM)
+import Data.List        (intersect)
+import System.IO        (hFlush, stdout)
+import System.Random
+import Text.Read        (readMaybe)
 
 ---------------------------------------------------------------- Game ----------------------------------------------------------------
 
@@ -95,17 +97,21 @@ checkGameState board = do
 ---------------------------------------------------------------- Board ----------------------------------------------------------------
 
 -- Inits cells as Covered and grouped by rows [ [(1,1), (1,2)], [(2,1), (2,2)] ... ]
-makeBoard :: Int -> Int -> Board
-makeBoard row col = [ [Cell 
-    {
-        position         = (r, c),
-        cellDisplayState = Covered,
-        cellState        = case elem (r, c) minePositions of 
-                                True  -> Mine
-                                False -> AdjacentMine (calculateAdjacentMines (r, c) minePositions)
-    } | c <- [1..col] ] | r <- [1..row] ]
-    where 
-        minePositions = [(1,1), (1,2)]  -- TODO make this random
+makeBoard :: Row -> Col -> IO Board
+makeBoard row col = do
+    minePositions <- replicateM (calculateMineCount row col) $ getRandomPosition row col
+    return $ [ [Cell 
+            {
+                position         = (r, c),
+                cellDisplayState = Covered,
+                cellState        = case elem (r, c) minePositions of 
+                                        True  -> Mine
+                                        False -> AdjacentMine (calculateAdjacentMines (r, c) minePositions)
+            } | c <- [1..col] ] | r <- [1..row] ]
+
+-- Assign 15% of mines
+calculateMineCount :: Row -> Col -> Int
+calculateMineCount row col = ceiling $ fromIntegral (row * col) * 0.15
 
 showBoard :: Board -> IO ()
 showBoard board = do
@@ -147,7 +153,7 @@ showCell (Cell _ Uncovered (AdjacentMine 0)) = " "
 showCell (Cell _ Uncovered (AdjacentMine n)) = (show n)
 
 -- Read position: (Int, Int)
-getCellPosition :: Int -> Int -> IO Position
+getCellPosition :: Row -> Col -> IO Position
 getCellPosition maxRow maxCol = do
     position <- map readMaybe . words <$> putStrGetLine "Select a cell (row, col): "
     case position of
@@ -156,7 +162,7 @@ getCellPosition maxRow maxCol = do
                                     else putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
         _                    -> putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
 
-validateCellPosition :: Int -> Int -> Int -> Int -> Bool
+validateCellPosition :: Row -> Col -> Row -> Col -> Bool
 validateCellPosition row col maxRow maxCol = row > 0 && row <= maxRow && col > 0 && col <= maxCol
 
 calculateAdjacentMines :: Position -> [Position] -> Int
@@ -167,6 +173,12 @@ getAdjacentPositions (r, c) = filter (\(x, y) -> x > 0 && y > 0)
                               [(r - 1, c - 1), (r - 1, c), (r - 1, c + 1), 
                                (r, c - 1),  {- (r, c) -}   (r, c + 1),
                                (r + 1, c - 1), (r + 1, c), (r + 1, c + 1)]
+
+getRandomPosition :: Row -> Col -> IO Position
+getRandomPosition maxRow maxCol = do
+    row <- randomRIO (1, maxRow)
+    col <- randomRIO (1, maxCol)
+    return $ (row, col)
 
 ---------------------------------------------------------------- /Cell ----------------------------------------------------------------
 

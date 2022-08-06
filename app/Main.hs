@@ -9,4 +9,5 @@ main = do
     putStrLn "**********            Minesweeper Game            **********"
     putStrLn ""
     playerName <- putStrGetLine "Please, enter your name: "
-    runGame $ makeGame (makeBoard 3 3) playerName
+    board <- makeBoard 5 5
+    runGame $ makeGame board playerName

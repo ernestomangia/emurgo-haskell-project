@@ -1,31 +1,35 @@
 module DataTypes where
 
-type Board            = [ [Cell] ]
+type Row                = Int
 
-type Position         = (Int, Int)
+type Col                = Int
 
-data Cell             = Cell 
+type Position           = (Row, Col)
+
+type Board              = [ [Cell] ]
+
+data Cell               = Cell 
                         {
                             position          :: Position,
                             cellDisplayState  :: CellDisplayState,
                             cellState         :: CellState
                         } deriving (Show)
 
-data CellDisplayState  = Covered
-                         | Uncovered deriving (Show, Eq)
+data CellDisplayState   = Covered
+                            | Uncovered deriving (Show, Eq)
 
-data CellState         = Mine
-                         | AdjacentMine Int deriving (Show, Eq)
+data CellState          = Mine 
+                            | AdjacentMine Int deriving (Show, Eq)
 
-data GameState         = On 
+data GameState          = On 
                          | Won
                          | Lost
 
-data Game              = Game 
-                         { 
-                           playerName :: String,
-                           gameState  :: GameState,
-                           board      :: Board,
-                           maxRow     :: Int,
-                           maxCol     :: Int
-                         }
+data Game               = Game 
+                        {
+                            playerName :: String,
+                            gameState  :: GameState,
+                            board      :: Board,
+                            maxRow     :: Row,
+                            maxCol     :: Col
+                        }
