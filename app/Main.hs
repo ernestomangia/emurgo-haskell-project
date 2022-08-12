@@ -1,5 +1,6 @@
 module Main where
 
+import DataTypes
 import GameLogic
 
 main :: IO ()
@@ -9,5 +10,7 @@ main = do
     putStrLn "**********            Minesweeper Game            **********"
     putStrLn ""
     playerName <- putStrGetLine "Please, enter your name: "
-    board <- makeBoard 5 5
+    putStrLn ""
+    config <- makeConfig
+    board  <- makeBoard $ difficulty config
     runGame $ makeGame board playerName

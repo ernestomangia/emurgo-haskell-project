@@ -8,49 +8,28 @@ import System.IO        (hFlush, stdout)
 import System.Random
 import Text.Read        (readMaybe)
 
----------------------------------------------------------------- Game ----------------------------------------------------------------
+---------------------------------------------------------------- Config ----------------------------------------------------------------
 
-{-
-    5x5 board example:      	
-
-    1) Board init
-
-    Generated board:        Board displayed to user:
-       1 2 3 4 5  			   1 2 3 4 5
-    1  0 0 1 1 1            1  - - - - -
-    2  0 0 1 * 1            2  - - - - -
-    3  0 1 1 2 1            3  - - - - -
-    4  0 1 * 1 0            4  - - - - -
-    5  0 1 1 1 0            5  - - - - -
-
-
-    Cell value      Display value       Description
-    [0,9]           '-'                 Covered cell
-    0               ' '                 Uncovered empty cell with no surrounding mines
-    [1,8] 		    [1,8]			    Uncovered empty cell with N surrounding mines (up to 8)
-    9               '*'				    Uncovered mine cell
-
-    2) User selects cell (1, 5)
-
-       1 2 3 4 5
-    1  - - - - 1
-    2  - - - - -
-    3  - - - - -
-    4  - - - - -
-    5  - - - - -
+makeConfig :: IO Config
+makeConfig = getDifficulty >>= \d ->
+    return Config 
+            { 
+                difficulty = d,
+                size       = getBoardSize d
+            }
     
-    3) User selects cell (2, 1)
+getDifficulty :: IO Difficulty
+getDifficulty = do
+    difficulty <- readMaybe <$> putStrGetLine "Please, select difficulty:\n 1) Easy\n 2) Medium\n 3) Hard\nYour choise? "
+    case difficulty of
+        Just 1  -> return Easy
+        Just 2  -> return Medium
+        Just 3  -> return Hard
+        _       -> putStrLn "Invalid selection! \n" >> getDifficulty
 
-       1 2 3 4 5
-    1  - - - - 1
-    2    - - - -
-    3  - - - - -
-    4  - - - - -
-    5  - - - - -
+---------------------------------------------------------------- /Config ----------------------------------------------------------------
 
-    4) ...
-
--}
+---------------------------------------------------------------- Game ----------------------------------------------------------------
 
 makeGame :: Board -> String -> Game
 makeGame board playerName = Game 
@@ -96,9 +75,15 @@ checkGameState board = do
 
 ---------------------------------------------------------------- Board ----------------------------------------------------------------
 
--- Inits cells as Covered and grouped by rows [ [(1,1), (1,2)], [(2,1), (2,2)] ... ]
-makeBoard :: Row -> Col -> IO Board
-makeBoard row col = do
+getBoardSize :: Difficulty -> Size
+getBoardSize Easy   = (5, 5)
+getBoardSize Medium = (15, 15)
+getBoardSize Hard   = (16, 30)
+
+-- Inits cells as Covered and grouped by rows [ [(1,1), (1,2), ...], [(2,1), (2,2), ...], ... ]
+makeBoard :: Difficulty -> IO Board
+makeBoard difficulty = do
+    let (row, col) = getBoardSize difficulty 
     minePositions <- replicateM (calculateMineCount row col) $ getRandomPosition row col
     return $ [ [Cell 
             {
@@ -162,6 +147,9 @@ getCellPosition maxRow maxCol = do
                                     else putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
         _                    -> putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
 
+
+
+
 validateCellPosition :: Row -> Col -> Row -> Col -> Bool
 validateCellPosition row col maxRow maxCol = row > 0 && row <= maxRow && col > 0 && col <= maxCol
 
@@ -169,10 +157,10 @@ calculateAdjacentMines :: Position -> [Position] -> Int
 calculateAdjacentMines pos mines = length $ intersect mines (getAdjacentPositions pos)
 
 getAdjacentPositions :: Position -> [Position]
-getAdjacentPositions (r, c) = filter (\(x, y) -> x > 0 && y > 0) 
-                              [(r - 1, c - 1), (r - 1, c), (r - 1, c + 1), 
-                               (r, c - 1),  {- (r, c) -}   (r, c + 1),
-                               (r + 1, c - 1), (r + 1, c), (r + 1, c + 1)]
+getAdjacentPositions (row, col) = filter (\(r, c) -> r > 0 && c > 0) 
+                              [(row - 1, col - 1), (row - 1, col), (row - 1, col + 1), 
+                               (row    , col - 1),                 (row    , col + 1),
+                               (row + 1, col - 1), (row + 1, col), (row + 1, col + 1)]
 
 getRandomPosition :: Row -> Col -> IO Position
 getRandomPosition maxRow maxCol = do
