@@ -1,9 +1,14 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module GameLogic where
 
 import DataTypes
 
 import Control.Monad    (replicateM)
+import Control.Monad.Reader
+import Control.Monad.State
 import Data.List        (intersect)
+import System.Console.ANSI
 import System.IO        (hFlush, stdout)
 import System.Random
 import Text.Read        (readMaybe)
@@ -11,11 +16,17 @@ import Text.Read        (readMaybe)
 ---------------------------------------------------------------- Config ----------------------------------------------------------------
 
 makeConfig :: IO Config
-makeConfig = getDifficulty >>= \d ->
-    return Config 
+makeConfig = do
+    playerName <- putStrGetLine "Please, enter your name: "
+    putStrLn ""
+    difficulty <- getDifficulty
+    putStrLn ""
+    return $ Config 
             { 
-                difficulty = d,
-                size       = getBoardSize d
+                playerName = playerName,
+                difficulty = difficulty,
+                boardSize  = getBoardSize difficulty,
+                mineRatio  = getMineRatio difficulty
             }
     
 getDifficulty :: IO Difficulty
@@ -25,80 +36,99 @@ getDifficulty = do
         Just 1  -> return Easy
         Just 2  -> return Medium
         Just 3  -> return Hard
-        _       -> putStrLn "Invalid selection! \n" >> getDifficulty
+        _       -> putStrLnError "Invalid selection! \n" >> getDifficulty
+
+showPlayer :: String -> IO ()
+showPlayer name = putStrLn $ "\nPlayer: " ++ name ++ "\n"
+
+getBoardSize :: Difficulty -> BoardSize
+getBoardSize Easy   = (4, 4)
+getBoardSize Medium = (15, 15)
+getBoardSize Hard   = (16, 30)
+
+getMineRatio :: Difficulty -> MineRatio
+getMineRatio Easy   = 0.10
+getMineRatio Medium = 0.15
+getMineRatio Hard   = 0.25
 
 ---------------------------------------------------------------- /Config ----------------------------------------------------------------
 
 ---------------------------------------------------------------- Game ----------------------------------------------------------------
 
-makeGame :: Board -> String -> Game
-makeGame board playerName = Game 
-  { 
-    playerName = playerName,
-    gameState  = On,
-    board      = board,
-    maxRow     = length board,
-    maxCol     = length . head $ board
-  }
+makeGame :: Config -> IO Game
+makeGame config = do
+    board  <- makeBoard config 
+    return $ Game 
+        { 
+            gameState  = On,
+            gameBoard  = board
+        }
 
-runGame :: Game -> IO ()
-runGame (Game player state board maxRow maxCol) = do
-    putStrLn ("\nPlayer: " ++ player ++ "\n")
-    showBoard board
-    cellPosition <- getCellPosition maxRow maxCol                                       -- Get position (row, col)
-    putStrLn "\n"
-    let updatedBoard = updateBoard board cellPosition                                   -- Update board at the selected position
-    case checkGameState updatedBoard of                                                 -- Check if Lost, Won or On
+runGame :: (MonadIO m, MonadReader Config m, MonadState Game m) => m ()
+runGame = do
+    config <- ask                                                                            -- Get config from ReaderT
+    game   <- get                                                                            -- Get game from StateT
+    let name  = playerName config
+        size  = boardSize config
+        board = gameBoard game
+        state = gameState game
+    liftIO $ showPlayer name
+    case state of                                                                            -- Check if Lost, Won or On
         Lost -> do
-                showBoard $ uncoverBoard board                                          -- Show board uncovered
-                putStrLn "******************** GAME OVER! ******************** \n"
+                liftIO $ showBoard . uncoverBoard $ board                                    -- Show board uncovered
+                liftIO $ putStrLn "******************** GAME OVER! ******************** \n"
         Won  -> do
-                showBoard $ uncoverBoard board                                          -- Show board uncovered
-                putStrLn "******************** YOU WIN! ******************** \n"
-        On   -> runGame (Game player state updatedBoard maxRow maxCol)                  -- Game continues
+                liftIO $ showBoard . uncoverBoard $ board                                    -- Show board uncovered
+                liftIO $ putStrLn "******************** YOU WIN! ******************** \n"
+        On   -> do
+                liftIO $ showBoard board
+                liftIO $ putStrLn ("-----------------------------------------\n")
+                cellPosition <- liftIO $ getCellPosition size                                -- Get position (row, col)
+                updateBoard cellPosition                                                     -- Update board with the selected position
+                updateGameState
+                runGame                                                                      -- Game continues
 
-checkGameState :: Board -> GameState
-checkGameState board = do
-    let concatBoard = concat board
-    let anyMineUncovered = any (\x -> cellState x == Mine 
-                                      && cellDisplayState x == Uncovered) $ concatBoard
-    case anyMineUncovered of
-        True    -> Lost
-        _       -> do 
-                   let anyNonMineCovered = any (\x -> (case cellState x of AdjacentMine _ -> True; _ -> False) 
-                                                       && cellDisplayState x == Covered) $ concatBoard
-                   case anyNonMineCovered of
-                        True    -> On
-                        _       -> Won
+updateGameState :: (MonadState Game m) => m ()
+updateGameState = do
+    game   <- get
+    put ( game { gameState = getGameState $ gameBoard game } )
+
+getGameState :: GameBoard -> GameState
+getGameState board 
+    | anyMineUncovered board = Lost
+    | anyEmptyCovered board  = On
+    | otherwise              = Won
+
+anyMineUncovered :: GameBoard -> Bool
+anyMineUncovered board = any (\c -> cellState c == Mine  
+                                    && cellDisplayState c == Uncovered) $ concat board
+
+anyEmptyCovered :: GameBoard -> Bool
+anyEmptyCovered board = any (\c -> (case cellState c of AdjacentMine _ -> True; _ -> False) 
+                                    && cellDisplayState c == Covered) $ concat board
 
 ---------------------------------------------------------------- /Game ----------------------------------------------------------------
 
 ---------------------------------------------------------------- Board ----------------------------------------------------------------
 
-getBoardSize :: Difficulty -> Size
-getBoardSize Easy   = (5, 5)
-getBoardSize Medium = (15, 15)
-getBoardSize Hard   = (16, 30)
-
 -- Inits cells as Covered and grouped by rows [ [(1,1), (1,2), ...], [(2,1), (2,2), ...], ... ]
-makeBoard :: Difficulty -> IO Board
-makeBoard difficulty = do
-    let (row, col) = getBoardSize difficulty 
-    minePositions <- replicateM (calculateMineCount row col) $ getRandomPosition row col
+makeBoard :: Config -> IO GameBoard
+makeBoard config = do
+    let (maxRow, maxCol) = boardSize config
+        mRatio           = mineRatio config
+        mineCount        = calculateMineCount (maxRow, maxCol) mRatio
+    mines <- replicateM mineCount $ getRandomPosition (maxRow, maxCol)
     return $ [ [Cell 
             {
                 position         = (r, c),
                 cellDisplayState = Covered,
-                cellState        = case elem (r, c) minePositions of 
-                                        True  -> Mine
-                                        False -> AdjacentMine (calculateAdjacentMines (r, c) minePositions)
-            } | c <- [1..col] ] | r <- [1..row] ]
+                cellState        = getCellState (r, c) mines
+            } | c <- [1..maxCol] ] | r <- [1..maxRow] ]
 
--- Assign 15% of mines
-calculateMineCount :: Row -> Col -> Int
-calculateMineCount row col = ceiling $ fromIntegral (row * col) * 0.15
+calculateMineCount :: BoardSize -> MineRatio -> Int
+calculateMineCount (maxRow, maxCol) mineRatio = ceiling $ fromIntegral (maxRow * maxCol) * mineRatio
 
-showBoard :: Board -> IO ()
+showBoard :: GameBoard -> IO ()
 showBoard board = do
     putStrLn $ putStrPadding " " ++ showColNumbers board
     putStrLn ""
@@ -106,16 +136,19 @@ showBoard board = do
     putStrLn ""
 
 -- Show column numbers as top-header
-showColNumbers :: Board -> String
+showColNumbers :: GameBoard -> String
 showColNumbers board = concat [putStrPadding $ show col | (row, col) <- (map (position) (head board))]
 
-uncoverBoard :: Board -> Board
+uncoverBoard :: GameBoard -> GameBoard
 uncoverBoard board = map (map (\x -> x { cellDisplayState = Uncovered })) $ board
 
-updateBoard :: Board -> Position -> Board
-updateBoard board pos = map (map (\c -> if position c == pos 
+updateBoard :: (MonadIO m, MonadReader Config m, MonadState Game m) => Position -> m ()
+updateBoard pos = do
+    game   <- get 
+    let updatedBoard = map (map (\c -> if position c == pos 
                                             then c { cellDisplayState = Uncovered }
-                                            else c )) $ board
+                                            else c )) $ gameBoard game
+    put ( game { gameBoard = updatedBoard } )
 
 ---------------------------------------------------------------- /Board ----------------------------------------------------------------
 
@@ -138,20 +171,22 @@ showCell (Cell _ Uncovered (AdjacentMine 0)) = " "
 showCell (Cell _ Uncovered (AdjacentMine n)) = (show n)
 
 -- Read position: (Int, Int)
-getCellPosition :: Row -> Col -> IO Position
-getCellPosition maxRow maxCol = do
+getCellPosition :: BoardSize -> IO Position
+getCellPosition (maxRow, maxCol) = do
     position <- map readMaybe . words <$> putStrGetLine "Select a cell (row, col): "
     case position of
-        [Just row, Just col] -> if validateCellPosition row col maxRow maxCol
+        [Just row, Just col] -> if validateCellPosition row col (maxRow, maxCol)
                                     then return (row, col)
-                                    else putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
-        _                    -> putStrLn "Invalid cell! \n" >> getCellPosition maxRow maxCol
+                                    else putStrLnError "Position out of boundaries! \n" >> getCellPosition (maxRow, maxCol)
+        _                    -> putStrLnError "Invalid format! \n" >> getCellPosition (maxRow, maxCol)
 
+validateCellPosition :: Row -> Col -> BoardSize -> Bool
+validateCellPosition row col (maxRow, maxCol) = row > 0 && row <= maxRow && col > 0 && col <= maxCol
 
-
-
-validateCellPosition :: Row -> Col -> Row -> Col -> Bool
-validateCellPosition row col maxRow maxCol = row > 0 && row <= maxRow && col > 0 && col <= maxCol
+getCellState :: Position -> [Position] -> CellState
+getCellState pos mines = case elem pos mines of 
+                            True  -> Mine
+                            False -> AdjacentMine (calculateAdjacentMines pos mines)
 
 calculateAdjacentMines :: Position -> [Position] -> Int
 calculateAdjacentMines pos mines = length $ intersect mines (getAdjacentPositions pos)
@@ -162,8 +197,8 @@ getAdjacentPositions (row, col) = filter (\(r, c) -> r > 0 && c > 0)
                                (row    , col - 1),                 (row    , col + 1),
                                (row + 1, col - 1), (row + 1, col), (row + 1, col + 1)]
 
-getRandomPosition :: Row -> Col -> IO Position
-getRandomPosition maxRow maxCol = do
+getRandomPosition :: BoardSize -> IO Position
+getRandomPosition (maxRow, maxCol) = do
     row <- randomRIO (1, maxRow)
     col <- randomRIO (1, maxCol)
     return $ (row, col)
@@ -177,5 +212,11 @@ putStrPadding s = s ++ (concat $ replicate 3 " ")
 
 putStrGetLine :: String -> IO String
 putStrGetLine text = putStr text >> hFlush stdout >> getLine
+
+putStrLnError :: String -> IO ()
+putStrLnError text = do
+    setSGR [ SetColor Foreground Vivid Red ]
+    putStrLn text
+    setSGR [ Reset ]
 
 ---------------------------------------------------------------- /Helper functions ----------------------------------------------------------------

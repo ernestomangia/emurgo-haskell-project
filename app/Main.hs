@@ -3,14 +3,16 @@ module Main where
 import DataTypes
 import GameLogic
 
+import Control.Monad.Reader
+import Control.Monad.State
+
 main :: IO ()
 main = do
     putStrLn ""
     putStrLn "********** EMURGO Batch 64 | Final project | 2022 **********"
     putStrLn "**********            Minesweeper Game            **********"
     putStrLn ""
-    playerName <- putStrGetLine "Please, enter your name: "
-    putStrLn ""
     config <- makeConfig
-    board  <- makeBoard $ difficulty config
-    runGame $ makeGame board playerName
+    game   <- makeGame config
+    runStateT (runReaderT runGame config) game
+    return ()

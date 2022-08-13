@@ -2,14 +2,17 @@ module DataTypes where
 
 type Row                = Int
 type Col                = Int
-type Size               = (Row, Col)
+type Count              = Int
+type BoardSize          = (Row, Col)
 type Position           = (Row, Col)
+type PlayerName         = String
+type MineRatio          = Float
 
 data CellDisplayState   = Covered
                             | Uncovered deriving (Show, Eq)
 
 data CellState          = Mine 
-                            | AdjacentMine Int deriving (Show, Eq)
+                            | AdjacentMine Count deriving (Show, Eq)
 
 data Cell               = Cell 
                           {
@@ -18,7 +21,7 @@ data Cell               = Cell
                             cellState         :: CellState
                           } deriving (Show)
 
-type Board              = [ [Cell] ]
+type GameBoard          = [ [Cell] ]
 
 data GameState          = On 
                             | Won
@@ -26,11 +29,8 @@ data GameState          = On
 
 data Game               = Game 
                           {
-                            playerName :: String,
                             gameState  :: GameState,
-                            board      :: Board,
-                            maxRow     :: Row,
-                            maxCol     :: Col
+                            gameBoard  :: GameBoard
                           }
 
 data Difficulty         = Easy
@@ -39,6 +39,8 @@ data Difficulty         = Easy
 
 data Config             = Config 
                           {
+                            playerName :: PlayerName,
                             difficulty :: Difficulty,
-                            size       :: Size
+                            boardSize  :: BoardSize,
+                            mineRatio  :: MineRatio
                           }

@@ -71,7 +71,7 @@ Instead of setting up Haskell/Cabal in your local system, you can make use of th
 
 All done! Your docker container is ready. Run `cabal run` to play the game.
 
-Read [Usage using Docker](#usage-using-docker) to know how to start the container once exited.
+Read [Usage > Docker](#docker-1) section to know how to start the container once exited.
 
 ## Usage
 * Run `cabal run` to play the game
