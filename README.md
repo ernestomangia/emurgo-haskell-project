@@ -5,45 +5,55 @@ Minesweeper game implemented using Haskell with Cabal. This is a mini-project th
 The game consists of a board of selectable cells, where some of the cells contain hidden mines. The objective is to clear the board without detonating any mines. 
 
 For a quick overview, check the [Google Minesweeper](https://g.co/kgs/rUvkYU) online.
-  
-    Example of a 5x5 board:
 
-    1) Init game
+**Workflow**
 
-    Generated board:        Board displayed to user:
-       1 2 3 4 5               1 2 3 4 5
-    1  0 0 1 1 1            1  - - - - -
-    2  0 0 1 * 1            2  - - - - -
-    3  0 1 1 2 1            3  - - - - -
-    4  0 1 * 1 0            4  - - - - -
-    5  0 1 1 1 0            5  - - - - -
+1. Make Config
+   1. Ask for player name 
+   2. Ask for difficulty 
+2. Make Game
+   1. Make board
+      1. Generate random positions for mines
+      2. Make cell
+      3. Calculate adjacent mines for each cell
+3. Run Game
+   1. Check game state
+      1. If Lost or Won, then
+         1. Uncover board
+         2. Show board -> Game ends
+      2. If On, then 
+         1. Show board
+         2. Ask for position
+         3. Update board
+         4. Update game state
+         5. Run game (loop)
 
-    2) User selects cell (1, 5)
-
-       1 2 3 4 5
-    1  - - - - 1
-    2  - - - - -
-    3  - - - - -
-    4  - - - - -
-    5  - - - - -
+**Example**
     
-    3) User selects cell (2, 1)
+    1) Init game - Easy (5 x 5)
+    
+    Generated board:                            Board displayed to user:
+          1     2     3     4     5                   1     2     3     4     5   
+                                                                                  
+    1     0  |  0  |  1  |  1  |  1  |          1     -  |  -  |  -  |  -  |  -  |
+        ------------------------------              ------------------------------
+    2     0  |  0  |  1  |  *  |  1  |          2     -  |  -  |  -  |  -  |  -  |
+        ------------------------------              ------------------------------
+    3     0  |  1  |  1  |  2  |  1  |          3     -  |  -  |  -  |  -  |  -  |
+        ------------------------------              ------------------------------
+    4     0  |  1  |  *  |  1  |  0  |          4     -  |  -  |  -  |  -  |  -  |
+        ------------------------------              ------------------------------
+    5     0  |  1  |  1  |  1  |  -  |          5     -  |  -  |  -  |  -  |  -  |
+        ------------------------------              ------------------------------
 
-       1 2 3 4 5
-    1  - - - - 1
-    2    - - - -
-    3  - - - - -
-    4  - - - - -
-    5  - - - - -
+**Legend**
 
-    4) ...
-
-| Cell value   | Display value  | Description                                             |
-| :---         | :---           | :---                                                    |
-| [0,9]        | '-'            | Covered cell                                            |
-| 0            | ' '            | Uncovered empty cell with no surrounding mines          |
-| [1,8]        | [1,8]          | Uncovered empty cell with N surrounding mines (up to 8) |
-| 9            | '*'            | Uncovered mine cell                                     |
+| Display | Description                                    | Cell state    |
+| :---    | :---                                           | :---          |
+| '-'     | Covered cell                                   | Mine or [0,8] |
+| '*'     | Uncovered mine cell                            | Mine          |
+| ' '     | Uncovered empty cell with no surrounding mines | 0             |
+| [1,8]   | Uncovered empty cell with N surrounding mines  | [1,8]         |
 
 ## Getting Started
 

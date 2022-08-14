@@ -31,7 +31,7 @@ makeConfig = do
     
 getDifficulty :: IO Difficulty
 getDifficulty = do
-    difficulty <- readMaybe <$> putStrGetLine "Please, select difficulty:\n 1) Easy\n 2) Medium\n 3) Hard\nYour choise? "
+    difficulty <- readMaybe <$> putStrGetLine "Please, select difficulty:\n 1) Easy   (5x5)\n 2) Medium (15x15)\n 3) Hard   (16x30)\nYour choise? "
     case difficulty of
         Just 1  -> return Easy
         Just 2  -> return Medium
