@@ -36,13 +36,13 @@ getDifficulty = do
         Just 1  -> return Easy
         Just 2  -> return Medium
         Just 3  -> return Hard
-        _       -> putStrLnError "Invalid selection! \n" >> getDifficulty
+        _       -> putStrLnRed "Invalid selection! \n" >> getDifficulty
 
 showPlayer :: String -> IO ()
 showPlayer name = putStrLn $ "\nPlayer: " ++ name ++ "\n"
 
 getBoardSize :: Difficulty -> BoardSize
-getBoardSize Easy   = (4, 4)
+getBoardSize Easy   = (5, 5)
 getBoardSize Medium = (15, 15)
 getBoardSize Hard   = (16, 30)
 
@@ -59,30 +59,31 @@ makeGame :: Config -> IO Game
 makeGame config = do
     board  <- makeBoard config 
     return $ Game 
-        { 
-            gameState  = On,
-            gameBoard  = board
-        }
+            { 
+                gameState  = On,
+                gameBoard  = board
+            }
 
 runGame :: (MonadIO m, MonadReader Config m, MonadState Game m) => m ()
 runGame = do
     config <- ask                                                                            -- Get config from ReaderT
     game   <- get                                                                            -- Get game from StateT
-    let name  = playerName config
-        size  = boardSize config
-        board = gameBoard game
-        state = gameState game
+    let name       = playerName config
+        size       = boardSize config
+        board      = gameBoard game
+        state      = gameState game
+        (row, col) = size
     liftIO $ showPlayer name
     case state of                                                                            -- Check if Lost, Won or On
         Lost -> do
                 liftIO $ showBoard . uncoverBoard $ board                                    -- Show board uncovered
-                liftIO $ putStrLn "******************** GAME OVER! ******************** \n"
+                liftIO $ putStrLnRed "******************** GAME OVER! ******************** \n"
         Won  -> do
                 liftIO $ showBoard . uncoverBoard $ board                                    -- Show board uncovered
-                liftIO $ putStrLn "******************** YOU WIN! ******************** \n"
+                liftIO $ putStrLnGreen "******************** YOU WIN! ******************** \n"
         On   -> do
                 liftIO $ showBoard board
-                liftIO $ putStrLn ("-----------------------------------------\n")
+                liftIO $ putStrLn $ (concat . replicate (col * 6) $ "=") ++ "\n"
                 cellPosition <- liftIO $ getCellPosition size                                -- Get position (row, col)
                 updateBoard cellPosition                                                     -- Update board with the selected position
                 updateGameState
@@ -118,70 +119,53 @@ makeBoard config = do
         mRatio           = mineRatio config
         mineCount        = calculateMineCount (maxRow, maxCol) mRatio
     mines <- replicateM mineCount $ getRandomPosition (maxRow, maxCol)
-    return $ [ [Cell 
-            {
-                position         = (r, c),
-                cellDisplayState = Covered,
-                cellState        = getCellState (r, c) mines
-            } | c <- [1..maxCol] ] | r <- [1..maxRow] ]
+    return $ [ [ makeCell (r, c) mines | c <- [1..maxCol] ] | r <- [1..maxRow] ]
 
 calculateMineCount :: BoardSize -> MineRatio -> Int
 calculateMineCount (maxRow, maxCol) mineRatio = ceiling $ fromIntegral (maxRow * maxCol) * mineRatio
 
 showBoard :: GameBoard -> IO ()
 showBoard board = do
-    putStrLn $ putStrPadding " " ++ showColNumbers board
+    putStrLn $ getColNumbers board
     putStrLn ""
-    mapM_ (\x -> putStrLn x >> putStrLn "") $ map showRow board
+    mapM_ showRow board
     putStrLn ""
 
--- Show column numbers as top-header
-showColNumbers :: GameBoard -> String
-showColNumbers board = concat [putStrPadding $ show col | (row, col) <- (map (position) (head board))]
+-- Get column numbers for top-header
+getColNumbers :: GameBoard -> String
+getColNumbers board = addPadding "" ++ concat [addPadding $ show col | (_, col) <- map position $ head board]
+
+showRow :: [Cell] -> IO ()
+showRow row = do
+    let rowNumber = addPadding . show . fst . position $ head row
+        rowCells  = concat . map (addPadding . showCell) $ row
+        separator = addPadding "" ++ (concat . replicate (length row * 6) $ "-")
+    putStrLn $ rowNumber ++ rowCells
+    putStrLn $ separator
 
 uncoverBoard :: GameBoard -> GameBoard
 uncoverBoard board = map (map (\x -> x { cellDisplayState = Uncovered })) $ board
 
-updateBoard :: (MonadIO m, MonadReader Config m, MonadState Game m) => Position -> m ()
+updateBoard :: (MonadState Game m) => Position -> m ()
 updateBoard pos = do
     game   <- get 
-    let updatedBoard = map (map (\c -> if position c == pos 
-                                            then c { cellDisplayState = Uncovered }
-                                            else c )) $ gameBoard game
-    put ( game { gameBoard = updatedBoard } )
+    let oldBoard = gameBoard game
+        newBoard = map (map (\c -> if position c == pos 
+                                        then c { cellDisplayState = Uncovered }
+                                        else c )) $ oldBoard
+    put ( game { gameBoard = newBoard } )
 
 ---------------------------------------------------------------- /Board ----------------------------------------------------------------
 
----------------------------------------------------------------- Row ----------------------------------------------------------------
-
-showRow :: [Cell] -> String
-showRow row = showRowNumber row ++ (concat . map (putStrPadding . showCell) $ row)
-
-showRowNumber :: [Cell] -> String
-showRowNumber row = putStrPadding $ show $ fst $ position $ head row
-
----------------------------------------------------------------- /Row ----------------------------------------------------------------
-
 ---------------------------------------------------------------- Cell ----------------------------------------------------------------
 
-showCell :: Cell -> String
-showCell (Cell _ Covered _)                  = "-"
-showCell (Cell _ Uncovered Mine)             = "*"
-showCell (Cell _ Uncovered (AdjacentMine 0)) = " "
-showCell (Cell _ Uncovered (AdjacentMine n)) = (show n)
-
--- Read position: (Int, Int)
-getCellPosition :: BoardSize -> IO Position
-getCellPosition (maxRow, maxCol) = do
-    position <- map readMaybe . words <$> putStrGetLine "Select a cell (row, col): "
-    case position of
-        [Just row, Just col] -> if validateCellPosition row col (maxRow, maxCol)
-                                    then return (row, col)
-                                    else putStrLnError "Position out of boundaries! \n" >> getCellPosition (maxRow, maxCol)
-        _                    -> putStrLnError "Invalid format! \n" >> getCellPosition (maxRow, maxCol)
-
-validateCellPosition :: Row -> Col -> BoardSize -> Bool
-validateCellPosition row col (maxRow, maxCol) = row > 0 && row <= maxRow && col > 0 && col <= maxCol
+makeCell :: Position -> [Position] -> Cell
+makeCell pos mines = Cell 
+                    {
+                        position         = pos,
+                        cellDisplayState = Covered,
+                        cellState        = getCellState pos mines
+                    }
 
 getCellState :: Position -> [Position] -> CellState
 getCellState pos mines = case elem pos mines of 
@@ -203,19 +187,49 @@ getRandomPosition (maxRow, maxCol) = do
     col <- randomRIO (1, maxCol)
     return $ (row, col)
 
+showCell :: Cell -> String
+showCell (Cell _ Covered _)                  = "  -  |"
+showCell (Cell _ Uncovered Mine)             = "  *  |"
+showCell (Cell _ Uncovered (AdjacentMine 0)) = "     |"
+showCell (Cell _ Uncovered (AdjacentMine n)) = "  " ++ (show n) ++ "  |"
+
+-- Read position: (Int, Int)
+getCellPosition :: BoardSize -> IO Position
+getCellPosition (maxRow, maxCol) = do
+    position <- map readMaybe . words <$> putStrGetLine "Select a cell (e.g. 2 1): "
+    case position of
+        [Just row, Just col] -> if validateCellPosition row col (maxRow, maxCol)
+                                    then return (row, col)
+                                    else putStrLnRed "Position out of boundaries! \n" >> getCellPosition (maxRow, maxCol)
+        _                    -> putStrLnRed "Invalid format! \n" >> getCellPosition (maxRow, maxCol)
+
+validateCellPosition :: Row -> Col -> BoardSize -> Bool
+validateCellPosition row col (maxRow, maxCol) = row > 0 && row <= maxRow && col > 0 && col <= maxCol
+
 ---------------------------------------------------------------- /Cell ----------------------------------------------------------------
 
 ---------------------------------------------------------------- Helper functions ----------------------------------------------------------------
 
-putStrPadding :: String -> String
-putStrPadding s = s ++ (concat $ replicate 3 " ")
+addPadding :: String -> String
+addPadding text = padRight ++ text ++ padLeft
+    where
+        maxPadding = 6 - length text
+        count      = div maxPadding 2
+        padRight   = concat . replicate count $ " "
+        padLeft    = concat . replicate (maxPadding - count) $ " "
 
 putStrGetLine :: String -> IO String
 putStrGetLine text = putStr text >> hFlush stdout >> getLine
 
-putStrLnError :: String -> IO ()
-putStrLnError text = do
+putStrLnRed :: String -> IO ()
+putStrLnRed text = do
     setSGR [ SetColor Foreground Vivid Red ]
+    putStrLn text
+    setSGR [ Reset ]
+
+putStrLnGreen :: String -> IO ()
+putStrLnGreen text = do
+    setSGR [ SetColor Foreground Vivid Green ]
     putStrLn text
     setSGR [ Reset ]
 
