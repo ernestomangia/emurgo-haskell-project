@@ -66,30 +66,31 @@ makeGame config = do
 
 runGame :: (MonadIO m, MonadReader Config m, MonadState Game m) => m ()
 runGame = do
-    config <- ask                                                                            -- Get config from ReaderT
-    game   <- get                                                                            -- Get game from StateT
+    config <- ask                                                                               -- Get config from Reader monad
+    game   <- get                                                                               -- Get game from State monad
     let name       = playerName config
         size       = boardSize config
-        board      = gameBoard game
         state      = gameState game
         (row, col) = size
     liftIO $ showPlayer name
-    case state of                                                                            -- Check if Lost, Won or On
+    case state of                                                                               -- Check if Lost, Won or On
         Lost -> do
-                liftIO $ showBoard . uncoverBoard $ board                                    -- Show board uncovered
+                uncoverBoard                                                                   
+                showBoard                                                                       -- Show board uncovered
                 liftIO $ putStrLnRed "******************** GAME OVER! ******************** \n"
         Won  -> do
-                liftIO $ showBoard . uncoverBoard $ board                                    -- Show board uncovered
+                uncoverBoard
+                showBoard
                 liftIO $ putStrLnGreen "******************** YOU WIN! ******************** \n"
         On   -> do
-                liftIO $ showBoard board
+                showBoard
                 liftIO $ putStrLn $ (concat . replicate (col * 6) $ "=") ++ "\n"
-                cellPosition <- liftIO $ getCellPosition size                                -- Get position (row, col)
-                updateBoard cellPosition                                                     -- Update board with the selected position
+                cellPosition <- liftIO $ getCellPosition size                                   -- Get position (row, col)
+                updateBoard cellPosition                                                        -- Update board with the selected position
                 updateGameState
-                runGame                                                                      -- Game continues
+                runGame                                                                         -- Game continues
 
-updateGameState :: (MonadState Game m) => m ()
+updateGameState :: MonadState Game m => m ()
 updateGameState = do
     game   <- get
     put ( game { gameState = getGameState $ gameBoard game } )
@@ -124,29 +125,35 @@ makeBoard config = do
 calculateMineCount :: BoardSize -> MineRatio -> Int
 calculateMineCount (maxRow, maxCol) mineRatio = ceiling $ fromIntegral (maxRow * maxCol) * mineRatio
 
-showBoard :: GameBoard -> IO ()
-showBoard board = do
-    putStrLn $ getColNumbers board
-    putStrLn ""
-    mapM_ showRow board
-    putStrLn ""
+showBoard :: (MonadIO m, MonadState Game m) => m ()
+showBoard = do
+    game   <- get 
+    let board = gameBoard game
+    liftIO $ putStrLn $ getColNumbers board
+    liftIO $ putStrLn ""
+    liftIO $ mapM_ showRow board
+    liftIO $ putStrLn ""
 
 -- Get column numbers for top-header
 getColNumbers :: GameBoard -> String
 getColNumbers board = addPadding "" ++ concat [addPadding $ show col | (_, col) <- map position $ head board]
 
-showRow :: [Cell] -> IO ()
+showRow :: (MonadIO m) => [Cell] -> m ()
 showRow row = do
     let rowNumber = addPadding . show . fst . position $ head row
         rowCells  = concat . map (addPadding . showCell) $ row
         separator = addPadding "" ++ (concat . replicate (length row * 6) $ "-")
-    putStrLn $ rowNumber ++ rowCells
-    putStrLn $ separator
+    liftIO $ putStrLn $ rowNumber ++ rowCells
+    liftIO $ putStrLn separator
 
-uncoverBoard :: GameBoard -> GameBoard
-uncoverBoard board = map (map (\x -> x { cellDisplayState = Uncovered })) $ board
+uncoverBoard :: MonadState Game m => m ()
+uncoverBoard = do
+    game   <- get 
+    let oldBoard = gameBoard game
+        newBoard = map (map (\x -> x { cellDisplayState = Uncovered })) $ oldBoard
+    put ( game { gameBoard = newBoard } )
 
-updateBoard :: (MonadState Game m) => Position -> m ()
+updateBoard :: MonadState Game m => Position -> m ()
 updateBoard pos = do
     game   <- get 
     let oldBoard = gameBoard game
@@ -176,10 +183,10 @@ calculateAdjacentMines :: Position -> [Position] -> Int
 calculateAdjacentMines pos mines = length $ intersect mines (getAdjacentPositions pos)
 
 getAdjacentPositions :: Position -> [Position]
-getAdjacentPositions (row, col) = filter (\(r, c) -> r > 0 && c > 0) 
-                              [(row - 1, col - 1), (row - 1, col), (row - 1, col + 1), 
-                               (row    , col - 1),                 (row    , col + 1),
-                               (row + 1, col - 1), (row + 1, col), (row + 1, col + 1)]
+getAdjacentPositions (row, col) = filter (\(r, c) -> r > 0 && c > 0)  
+                                        [(row - 1, col - 1), (row - 1, col), (row - 1, col + 1), 
+                                         (row    , col - 1),                 (row    , col + 1),
+                                         (row + 1, col - 1), (row + 1, col), (row + 1, col + 1)]
 
 getRandomPosition :: BoardSize -> IO Position
 getRandomPosition (maxRow, maxCol) = do
